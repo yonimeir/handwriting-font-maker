@@ -20,6 +20,11 @@ export default function App() {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
+  // Splitter Modal State
+  const [splittingChar, setSplittingChar] = useState(null);
+  const canvasSplitRef = useRef(null);
+  const [splitX, setSplitX] = useState(null);
+
   const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
   const handleFileSelected = async (fileData) => {
@@ -139,38 +144,83 @@ export default function App() {
     }
   };
 
-  const splitCharacter = async (currentIndex) => {
+  const openSplitter = (char, index) => {
+    setSplittingChar({ ...char, index });
+    setSplitX(null);
+  };
+
+  const closeSplitter = () => {
+    setSplittingChar(null);
+    setSplitX(null);
+  };
+
+  useEffect(() => {
+    if (splittingChar && canvasSplitRef.current) {
+      const canvas = canvasSplitRef.current;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.src = splittingChar.image;
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        if (splitX !== null) {
+          ctx.beginPath();
+          ctx.strokeStyle = '#ff4d4f'; // Red cut line
+          ctx.setLineDash([5, 5]);
+          ctx.lineWidth = 2;
+          ctx.moveTo(splitX, 0);
+          ctx.lineTo(splitX, canvas.height);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      };
+    }
+  }, [splittingChar, splitX]);
+
+  const handleSplitCanvasClick = (e) => {
+    const rect = canvasSplitRef.current.getBoundingClientRect();
+    const x = e.clientX || (e.touches && e.touches[0].clientX);
+    if (x) setSplitX(x - rect.left);
+  };
+
+  const saveSplitEvent = async () => {
+    if (!splittingChar || splitX === null) {
+      message.warning('אנא לחץ על התמונה כדי לסמן את קו הגזירה האדום ולאחר מכן שמור.');
+      return;
+    }
     setLoading(true);
     try {
+      const currentIndex = splittingChar.index;
       const char = characters[currentIndex];
       const img = new Image();
       img.src = char.image;
 
       await new Promise(resolve => img.onload = resolve);
 
-      const width = img.width;
-      const height = img.height;
-      const mid = Math.floor(width / 2);
+      const canvasW = canvasSplitRef.current.width;
+      // Calculate actual pixel cut point
+      const actualSplitX = Math.floor((splitX / canvasW) * img.width);
 
       // Create two canvases
-      // Right half (First letter in Hebrew RTL)
+      // Right half (First letter in Hebrew RTL, meaning the right side of the image)
       const canvasRight = document.createElement('canvas');
-      canvasRight.width = width - mid;
-      canvasRight.height = height;
+      canvasRight.width = img.width - actualSplitX;
+      canvasRight.height = img.height;
       const ctxRight = canvasRight.getContext('2d');
       ctxRight.fillStyle = '#ffffff';
       ctxRight.fillRect(0, 0, canvasRight.width, canvasRight.height);
-      ctxRight.drawImage(img, mid, 0, width - mid, height, 0, 0, width - mid, height);
+      ctxRight.drawImage(img, actualSplitX, 0, img.width - actualSplitX, img.height, 0, 0, img.width - actualSplitX, img.height);
       const rightSrc = canvasRight.toDataURL('image/png');
 
-      // Left half (Second letter)
+      // Left half (Second letter in Hebrew RTL, meaning the left side of the image)
       const canvasLeft = document.createElement('canvas');
-      canvasLeft.width = mid;
-      canvasLeft.height = height;
+      canvasLeft.width = actualSplitX;
+      canvasLeft.height = img.height;
       const ctxLeft = canvasLeft.getContext('2d');
       ctxLeft.fillStyle = '#ffffff';
       ctxLeft.fillRect(0, 0, canvasLeft.width, canvasLeft.height);
-      ctxLeft.drawImage(img, 0, 0, mid, height, 0, 0, mid, height);
+      ctxLeft.drawImage(img, 0, 0, actualSplitX, img.height, 0, 0, actualSplitX, img.height);
       const leftSrc = canvasLeft.toDataURL('image/png');
 
       setCharacters(prev => {
@@ -190,7 +240,8 @@ export default function App() {
           guess: index < charsWithoutSpaces.length ? charsWithoutSpaces[index] : ""
         }));
       });
-      message.success("האות פוצלה בהצלחה לשתיים!");
+      message.success("האות פוצלה בהצלחה במיקום הנבחר!");
+      closeSplitter();
     } catch (err) {
       console.error(err);
       message.error("תקלה בפיצול התמונה.");
@@ -415,8 +466,8 @@ export default function App() {
                               <Tooltip title="ערוך ומחק לכלוך">
                                 <EditOutlined key="edit" onClick={() => openEraser(char)} style={{ color: '#1890ff' }} />
                               </Tooltip>,
-                              <Tooltip title="פצל אותיות שנדבקו בטעות (יחתוך אותן לחצי)">
-                                <ScissorOutlined key="split" onClick={() => splitCharacter(characters.indexOf(char))} style={{ color: '#faad14' }} />
+                              <Tooltip title="פצל אותיות שנדבקו בטעות (יחתוך אותן לחצי בחירתך)">
+                                <ScissorOutlined key="split" onClick={() => openSplitter(char, characters.indexOf(char))} style={{ color: '#faad14' }} />
                               </Tooltip>,
                               characters.indexOf(char) < characters.length - 1 ? (
                                 <Tooltip title="מזג עם האות הבאה (טוב לאותיות כמו ה', ק')">
@@ -498,6 +549,32 @@ export default function App() {
               onTouchStart={(e) => { e.preventDefault(); startDrawing(e.touches[0] ? { nativeEvent: { offsetX: e.touches[0].clientX - e.target.getBoundingClientRect().left, offsetY: e.touches[0].clientY - e.target.getBoundingClientRect().top } } : e); }}
               onTouchMove={(e) => { e.preventDefault(); draw(e.touches[0] ? { nativeEvent: { offsetX: e.touches[0].clientX - e.target.getBoundingClientRect().left, offsetY: e.touches[0].clientY - e.target.getBoundingClientRect().top } } : e); }}
               onTouchEnd={stopDrawing}
+              style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+            />
+          </div>
+        </Modal>
+
+        {/* Split Modal */}
+        <Modal
+          title="גזור מסגרת דבוקה לשתיים"
+          open={!!splittingChar}
+          onCancel={closeSplitter}
+          footer={[
+            <Button key="cancel" onClick={closeSplitter}>ביטול</Button>,
+            <Button key="save" type="primary" icon={<ScissorOutlined />} onClick={saveSplitEvent}>חתוך כאן</Button>
+          ]}
+          width={400}
+          bodyStyle={{ textAlign: 'center', padding: '20px' }}
+        >
+          <Paragraph type="secondary" style={{ marginBottom: '16px' }}>
+            לחץ על התמונה במקום בו תרצה להעביר את סכין החיתוך. קו אדום יסמן את הגבול. החלק הימני יהפוך לאות הראשונה והשמאלי לאות הבאה.
+          </Paragraph>
+          <div style={{ display: 'inline-block', border: '2px solid #303030', borderRadius: '8px', overflow: 'hidden', background: '#333' }}>
+            <canvas
+              ref={canvasSplitRef}
+              width={300}
+              height={150}
+              onClick={handleSplitCanvasClick}
               style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
             />
           </div>
