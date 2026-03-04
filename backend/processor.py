@@ -26,28 +26,23 @@ def process_image(image_bytes: bytes):
         scale = max_dim / max(h, w)
         img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-    # Convert to Grayscale and blur
+    # Convert to Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Otsu's thresholding (creates binary where background depends on the image)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Use Adaptive Thresholding to handle uneven lighting and shadows perfectly (White text on Black background)
+    thresh = cv2.adaptiveThreshold(
+        gray, 
+        255, 
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY_INV, 
+        31, # Block size (must be odd, 31 is good for large images)
+        15   # Constant subtracted from mean (higher = less noise, but might cut thin lines)
+    )
 
-    # Auto-Invert: cv2 contours need WHITE objects on BLACK background.
-    # Check the corners of the image: if they are mostly white (255), we need to invert.
-    corner_pixels = np.concatenate([
-        thresh[0:10, 0:10].flatten(),
-        thresh[0:10, -10:].flatten(),
-        thresh[-10:, 0:10].flatten(),
-        thresh[-10:, -10:].flatten()
-    ])
-    
-    # Check the most frequent value (median or mean)
-    # If it's mostly 0 (which was white in original image and inverted by THRESH_BINARY_INV), 
-    # then our font background is Black, and Text is White - which is correct for contours!
-    # If the background is 255 (White), it means the text is Black. We must invert it.
-    if np.median(corner_pixels) > 127:
-        thresh = cv2.bitwise_not(thresh)
+    # Apply morphological closing slightly to connect very close components of the same letter
+    # This helps with letters written with slight disconnects in the stroke
+    kernel = np.ones((3, 3), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
 
     # Find ALL contours (RETR_LIST) so we don't get blocked by a dark border around the page
     contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -55,11 +50,11 @@ def process_image(image_bytes: bytes):
     bounding_boxes = [cv2.boundingRect(c) for c in contours]
     
     valid_boxes_contours = []
-    # Filter out extremely small noise and extremely large page borders
+        # Filter out extremely small noise and extremely large page borders
     for box, contour in zip(bounding_boxes, contours):
         x, y, w, h = box
-        # Max width/height 90% of image, min 10px
-        if w > 10 and h > 10 and w < img.shape[1] * 0.9 and h < img.shape[0] * 0.9:
+        # Max width/height 90% of image, min width/height small enough to catch dots and 'י'
+        if w > 3 and h > 3 and (w * h) > 15 and w < img.shape[1] * 0.9 and h < img.shape[0] * 0.9:
             valid_boxes_contours.append((box, contour))
             
     if not valid_boxes_contours:
