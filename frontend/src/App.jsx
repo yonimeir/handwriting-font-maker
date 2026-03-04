@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Upload, Button, Typography, Layout, theme, Card, Col, Row, Input, Spin, message, Result, Steps, Tooltip, ConfigProvider, Alert } from 'antd';
-import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, Button, Typography, Layout, theme, Card, Col, Row, Input, Spin, message, Result, Steps, Tooltip, ConfigProvider, Alert, Modal, Space } from 'antd';
+import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined, InfoCircleOutlined, MergeCellsOutlined, BgColorsOutlined } from '@ant-design/icons';
 import 'antd/dist/reset.css'; // Helps with base styling
 
 const { Title, Text, Paragraph } = Typography;
@@ -14,6 +14,11 @@ export default function App() {
   const [characters, setCharacters] = useState([]);
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [transcript, setTranscript] = useState("אבגדהוזחטיכלמנסעפצקרשתץףןםך"); // Default Hebrew Alphabet
+
+  // Eraser Modal State
+  const [editingChar, setEditingChar] = useState(null);
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
@@ -66,6 +71,134 @@ export default function App() {
 
   const deleteCharacter = (id) => {
     setCharacters(prev => prev.filter(c => c.id !== id));
+  };
+
+  const mergeWithNext = async (currentIndex) => {
+    if (currentIndex >= characters.length - 1) return;
+
+    setLoading(true);
+    try {
+      const char1 = characters[currentIndex];
+      const char2 = characters[currentIndex + 1];
+
+      // Load both images
+      const img1 = new Image();
+      const img2 = new Image();
+      img1.src = char1.image;
+      img2.src = char2.image;
+
+      await Promise.all([
+        new Promise(resolve => img1.onload = resolve),
+        new Promise(resolve => img2.onload = resolve)
+      ]);
+
+      // Create a canvas to merge them side-by-side or stacked
+      // For Hebrew handwriting (Right to Left), char1 is usually to the right of char2, 
+      // or they are part of the same letter (like 'ה' or 'ק').
+      // We will place them side-by-side (char1 on the right, char2 on the left)
+      const padding = 10;
+      const canvas = document.createElement('canvas');
+      canvas.width = img1.width + img2.width + padding;
+      canvas.height = Math.max(img1.height, img2.height);
+      const ctx = canvas.getContext('2d');
+
+      // Fill with white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw char2 on the left, char1 on the right (RTL logic)
+      ctx.drawImage(img2, 0, (canvas.height - img2.height) / 2);
+      ctx.drawImage(img1, img2.width + padding, (canvas.height - img1.height) / 2);
+
+      const mergedSrc = canvas.toDataURL('image/png');
+
+      setCharacters(prev => {
+        const newChars = [...prev];
+        // Create the merged item
+        newChars[currentIndex] = {
+          ...char1,
+          image: mergedSrc
+        };
+        // Remove the next item since it's now merged
+        newChars.splice(currentIndex + 1, 1);
+
+        // Re-align the guesses (Transcript Shifting) backwards
+        // because we reduced the number of image boxes by 1
+        const charsWithoutSpaces = transcript.replace(/\s+/g, '');
+        return newChars.map((char, index) => ({
+          ...char,
+          guess: index < charsWithoutSpaces.length ? charsWithoutSpaces[index] : ""
+        }));
+      });
+      message.success("חלקי האות המפוצלת מוזגו בהצלחה!");
+    } catch (err) {
+      console.error(err);
+      message.error("תקלה במיזוג התמונות.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEraser = (char) => {
+    setEditingChar(char);
+  };
+
+  const closeEraser = () => {
+    setEditingChar(null);
+  };
+
+  useEffect(() => {
+    if (editingChar && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.src = editingChar.image;
+      img.onload = () => {
+        // Clear and draw image matching canvas size
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // We'll scale the image to fit the 300x300 canvas for easy editing
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Setup Brush (Eraser actually just paints white)
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 15; // Eraser size
+      };
+    }
+  }, [editingChar]);
+
+  const startDrawing = (e) => {
+    const { offsetX, offsetY } = e.nativeEvent;
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(offsetX, offsetY);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const { offsetX, offsetY } = e.nativeEvent;
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.lineTo(offsetX, offsetY);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    const ctx = canvasRef.current.getContext('2d');
+    ctx.closePath();
+    setIsDrawing(false);
+  };
+
+  const saveEraserEdits = () => {
+    if (!canvasRef.current || !editingChar) return;
+    const updatedSrc = canvasRef.current.toDataURL('image/png');
+    setCharacters(prev =>
+      prev.map(c => c.id === editingChar.id ? { ...c, image: updatedSrc } : c)
+    );
+    closeEraser();
+    message.success("נשמרו השינויים לאות!");
   };
 
   const generateFont = async () => {
@@ -219,7 +352,15 @@ export default function App() {
                             size="small"
                             style={{ borderColor: '#303030', background: '#1f1f1f' }}
                             actions={[
-                              <Tooltip title="מחק חתיכה זו (לכלוך / טעות חיתוך)">
+                              <Tooltip title="ערוך ומחק לכלוך">
+                                <EditOutlined key="edit" onClick={() => openEraser(char)} style={{ color: '#1890ff' }} />
+                              </Tooltip>,
+                              characters.indexOf(char) < characters.length - 1 ? (
+                                <Tooltip title="מזג עם האות הבאה (טוב לאותיות כמו ה', ק')">
+                                  <MergeCellsOutlined key="merge" onClick={() => mergeWithNext(characters.indexOf(char))} style={{ color: '#52c41a' }} />
+                                </Tooltip>
+                              ) : <span />,
+                              <Tooltip title="מחק חתיכה זו לגמרי">
                                 <DeleteOutlined key="delete" onClick={() => deleteCharacter(char.id)} style={{ color: '#ff4d4f' }} />
                               </Tooltip>
                             ]}
@@ -266,6 +407,39 @@ export default function App() {
             </div>
           </Spin>
         </Content>
+
+        {/* Eraser Modal */}
+        <Modal
+          title="עורך מחיקה ידני"
+          open={!!editingChar}
+          onCancel={closeEraser}
+          footer={[
+            <Button key="cancel" onClick={closeEraser}>ביטול</Button>,
+            <Button key="save" type="primary" icon={<CheckCircleOutlined />} onClick={saveEraserEdits}>שמור שינויים</Button>
+          ]}
+          width={400}
+          bodyStyle={{ textAlign: 'center', padding: '20px' }}
+        >
+          <Paragraph type="secondary" style={{ marginBottom: '16px' }}>
+            צייר עם האצבע או העכבר על האזורים השחורים כדי למחוק לכלוכים ושאריות לא רצויות.
+          </Paragraph>
+          <div style={{ display: 'inline-block', border: '2px solid #303030', borderRadius: '8px', overflow: 'hidden', background: '#333' }}>
+            <canvas
+              ref={canvasRef}
+              width={300}
+              height={300}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+              onTouchStart={(e) => { e.preventDefault(); startDrawing(e.touches[0] ? { nativeEvent: { offsetX: e.touches[0].clientX - e.target.getBoundingClientRect().left, offsetY: e.touches[0].clientY - e.target.getBoundingClientRect().top } } : e); }}
+              onTouchMove={(e) => { e.preventDefault(); draw(e.touches[0] ? { nativeEvent: { offsetX: e.touches[0].clientX - e.target.getBoundingClientRect().left, offsetY: e.touches[0].clientY - e.target.getBoundingClientRect().top } } : e); }}
+              onTouchEnd={stopDrawing}
+              style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+            />
+          </div>
+        </Modal>
+
       </Layout>
     </ConfigProvider>
   );
