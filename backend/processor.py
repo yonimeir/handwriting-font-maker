@@ -23,8 +23,22 @@ def process_image(image_bytes: bytes):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Otsu's thresholding
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # Otsu's thresholding (creates binary where background depends on the image)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Auto-Invert: cv2 contours need WHITE objects on BLACK background.
+    # Check the corners of the image: if they are mostly white (255), we need to invert.
+    corner_pixels = np.concatenate([
+        thresh[0:10, 0:10].flatten(),
+        thresh[0:10, -10:].flatten(),
+        thresh[-10:, 0:10].flatten(),
+        thresh[-10:, -10:].flatten()
+    ])
+    
+    # If the majority of corner pixels are 255 (white), it means the page background became white
+    # We must invert it so the background is 0 (black) and characters are 255 (white).
+    if np.median(corner_pixels) == 255:
+        thresh = cv2.bitwise_not(thresh)
 
     # Find ALL contours (RETR_LIST) so we don't get blocked by a dark border around the page
     contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
