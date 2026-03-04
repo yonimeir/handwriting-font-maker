@@ -1,40 +1,27 @@
-import { useState, useRef } from 'react';
-import { UploadCloud, CheckCircle, Type, X, Download } from 'lucide-react';
+import React, { useState } from 'react';
+import { Upload, Button, Typography, Layout, theme, Card, Col, Row, Input, Spin, message, Result, Steps, Tooltip, ConfigProvider } from 'antd';
+import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined } from '@ant-design/icons';
+import 'antd/dist/reset.css'; // Helps with base styling
+
+const { Title, Text, Paragraph } = Typography;
+const { Header, Content } = Layout;
+const { Dragger } = Upload;
 
 export default function App() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [characters, setCharacters] = useState([]);
   const [downloadUrl, setDownloadUrl] = useState(null);
 
-  const fileInputRef = useRef(null);
   const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.currentTarget.classList.add('drag-active');
-  };
-
-  const handleDragLeave = (e) => {
-    e.currentTarget.classList.remove('drag-active');
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-active');
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileSelected(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleFileSelected = async (selectedFile) => {
-    setFile(selectedFile);
+  const handleFileSelected = async (fileData) => {
+    setFile(fileData);
     setLoading(true);
 
-    // Simulate initial scan UI feel, then send to backend
     const formData = new FormData();
-    formData.append('file', selectedFile);
+    formData.append('file', fileData);
 
     try {
       const resp = await fetch(`${API_BASE}/upload`, {
@@ -45,16 +32,18 @@ export default function App() {
       const data = await resp.json();
       if (data.characters) {
         setCharacters(data.characters);
-        setStep(2); // Move to grid approval
+        setStep(1);
+        message.success(`זוהו ${data.characters.length} אותיות ברורות בתמונה!`);
       } else {
-        alert("Could not extract characters. Please try a clearer image.");
+        message.error("לא הצלחנו לחלץ אותיות. אנא נסה תמונה ברורה יותר.");
       }
     } catch (err) {
       console.error(err);
-      alert("Error connecting to the local Handwriting API.");
+      message.error("שגיאה בתקשורת מול השרת. אנא וודא שהשרת פועל תקין.");
     } finally {
       setLoading(false);
     }
+    return false; // Prevent default upload behavior
   };
 
   const updateCharacterGuess = (id, newGuess) => {
@@ -68,11 +57,10 @@ export default function App() {
   };
 
   const generateFont = async () => {
-    // Filter out characters without a guess
-    const validMappings = characters.filter(c => c.guess.trim() !== "");
+    const validMappings = characters.filter(c => c.guess && c.guess.trim() !== "");
 
     if (validMappings.length === 0) {
-      alert("Please map at least one character to a letter.");
+      message.warning("אנא הזן לפחות אות אחת כדי ליצור את הפונט.");
       return;
     }
 
@@ -89,136 +77,150 @@ export default function App() {
 
       if (!resp.ok) throw new Error("API Error");
 
-      // Handle the blob download
       const blob = await resp.blob();
       const url = window.URL.createObjectURL(blob);
       setDownloadUrl(url);
-      setStep(3); // Result stage
-
+      setStep(2);
+      message.success("הפונט המותאם אישית נוצר בהצלחה!");
     } catch (err) {
       console.error(err);
-      alert("Failed to generate font. Please check the python server.");
+      message.error("אירעה שגיאה ביצירת הפונט. אנא נסה שוב.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="container" dir="rtl">
-      <header className="app-header">
-        <h1 className="text-gradient" style={{ textAlign: 'center' }}>
-          <Type size={40} className="inline-block ml-3 mb-2" />
-          יוצר הפונטים שלי
-        </h1>
-        <p>הפוך את כתב היד היפה שלך לפונט דיגיטלי ברגע.</p>
-      </header>
+    <ConfigProvider
+      direction="rtl"
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: { colorPrimary: '#722ed1', borderRadius: 8, fontFamily: `'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` }
+      }}
+    >
+      <Layout style={{ minHeight: '100vh', background: '#000' }}>
+        <Header style={{ display: 'flex', alignItems: 'center', background: '#141414', padding: '0 50px', borderBottom: '1px solid #303030' }}>
+          <EditOutlined style={{ fontSize: '24px', color: '#722ed1', marginLeft: '12px' }} />
+          <Title level={3} style={{ margin: 0, color: '#fff' }}>Handwriter Studio</Title>
+        </Header>
 
-      <main>
-        {loading ? (
-          <div className="loader-container glass-panel">
-            <div className="spinner"></div>
-            <h3 className="text-xl font-bold">מעבד...</h3>
-            <p className="text-text-muted mt-2">הבינה המלאכותית מנתחת את משיכות המכחול שלך</p>
-          </div>
-        ) : (
-          <>
-            {/* Step 1: Upload */}
-            {step === 1 && (
-              <div
-                className="upload-zone"
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={fileInputRef}
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      handleFileSelected(e.target.files[0]);
-                    }
-                  }}
-                />
-                <UploadCloud className="upload-icon" />
-                <h2 className="text-2xl font-bold mb-2">העלה את דף כתב היד שלך</h2>
-                <p className="text-text-muted mb-6 px-4">
-                  צלם תמונה או העלה סריקה. לתוצאות הטובות ביותר, כתוב בבירור על דף חלק (ללא שורות).
-                </p>
-                <button className="btn btn-primary">בחר תמונה</button>
-              </div>
-            )}
+        <Content style={{ padding: '40px 24px', maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
 
-            {/* Step 2: Grid Editing */}
-            {step === 2 && (
-              <div className="editor-container glass-panel p-6">
-                <div className="editor-header">
-                  <div>
-                    <h2 className="text-2xl font-bold">אמת את האותיות</h2>
-                    <p className="text-text-muted text-sm mt-1">הקלד את האות הנכונה עבור כל חיתוך, או מחק לכלוכים.</p>
-                  </div>
-                  <button className="btn btn-primary" onClick={generateFont}>
-                    <CheckCircle size={20} className="ml-2" />
-                    צור פונט
-                  </button>
+          <Steps
+            current={step}
+            items={[
+              { title: 'העלאת תמונה', description: 'סרוק דף עם האותיות בכתב ידך' },
+              { title: 'אימות תווים', description: 'וודא שהאותיות זוהו נכון' },
+              { title: 'קבלת הפונט', description: 'הורד את קובץ הפונט (OTF)' },
+            ]}
+            style={{ marginBottom: '40px' }}
+          />
+
+          <Spin spinning={loading} tip="מעבד נתונים מהשרת, אנא המתן..." size="large">
+            <div style={{ minHeight: '400px', padding: '32px', background: '#141414', borderRadius: '12px', border: '1px solid #303030', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
+
+              {/* Step 0: Upload */}
+              {step === 0 && (
+                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                  <Title level={4}>העלה את דף כתב היד שלך</Title>
+                  <Paragraph type="secondary" style={{ marginBottom: '30px', fontSize: '16px' }}>
+                    צלם תמונה ברורה או העלה סריקה של האותיות שלך על דף חלק (ללא שורות או עכירות).
+                  </Paragraph>
+                  <Dragger
+                    accept="image/*"
+                    showUploadList={false}
+                    customRequest={({ file }) => handleFileSelected(file)}
+                    style={{ padding: '40px', background: '#1f1f1f', borderColor: '#434343' }}
+                  >
+                    <p className="ant-upload-drag-icon">
+                      <InboxOutlined style={{ color: '#722ed1' }} />
+                    </p>
+                    <p className="ant-upload-text" style={{ color: '#fff', fontSize: '18px' }}>לחץ כאן או גרור תמונה לאזור זה</p>
+                    <p className="ant-upload-hint" style={{ color: '#8c8c8c' }}>
+                      המערכת תומכת בקבצי JPG, PNG וכו'. התמונה תעבור עיבוד בשרת והאותיות יופרדו אוטומטית.
+                    </p>
+                  </Dragger>
                 </div>
+              )}
 
-                <div className="chars-grid">
-                  {characters.map(char => (
-                    <div className="char-card" key={char.id}>
-                      <button
-                        className="delete-btn"
-                        title="הסר לכלוך/שגיאה"
-                        onClick={() => deleteCharacter(char.id)}
-                      >
-                        <X size={16} />
-                      </button>
-                      <div className="char-image-container">
-                        <img src={char.image} alt="crop" className="char-image" />
-                      </div>
-                      <input
-                        type="text"
-                        maxLength="1"
-                        className="char-input"
-                        placeholder="?"
-                        value={char.guess}
-                        onChange={(e) => updateCharacterGuess(char.id, e.target.value)}
-                      />
+              {/* Step 1: Editor Grid */}
+              {step === 1 && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
+                    <div>
+                      <Title level={4} style={{ margin: 0 }}>אמת את האותיות</Title>
+                      <Paragraph type="secondary" style={{ margin: 0, marginTop: '8px' }}>
+                        הקלד את האות או הסימן הנכון לכל תמונה שמצאנו. מחק רעשים ולכלוכים בעזרת סמל הפח האדום בפינה.
+                      </Paragraph>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    <Button type="primary" size="large" icon={<CheckCircleOutlined />} onClick={generateFont}>
+                      צור פונט עכשיו
+                    </Button>
+                  </div>
 
-            {/* Step 3: Success Download */}
-            {step === 3 && (
-              <div className="completion-view glass-panel">
-                <CheckCircle className="success-icon" />
-                <h2 className="text-4xl font-bold mb-4">הפונט נוצר!</h2>
-                <p className="text-text-muted mb-8 text-lg">
-                  כתב היד המותאם אישית שלך ארוז כעת כקובץ פונט דיגיטלי.
-                </p>
-
-                <div className="flex gap-4 justify-center">
-                  <a href={downloadUrl} download="MyHandwriting.otf" className="btn btn-primary">
-                    <Download size={20} className="ml-2" />
-                    הורד קובץ .OTF
-                  </a>
-                  <button className="btn btn-secondary" onClick={() => {
-                    setStep(1);
-                    setFile(null);
-                    setCharacters([]);
-                  }}>
-                    הכן פונט נוסף
-                  </button>
+                  {characters.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '60px 0' }}>
+                      <PictureOutlined style={{ fontSize: '48px', color: '#434343' }} />
+                      <Paragraph style={{ marginTop: '16px', fontSize: '16px' }}>לא זוהו אותיות ברורות בתמונה. אנא הוסף תמונה אחרת.</Paragraph>
+                      <Button onClick={() => setStep(0)}>חזור להעלאה</Button>
+                    </div>
+                  ) : (
+                    <Row gutter={[16, 16]}>
+                      {characters.map(char => (
+                        <Col xs={12} sm={8} md={6} lg={4} key={char.id}>
+                          <Card
+                            hoverable
+                            size="small"
+                            style={{ borderColor: '#303030', background: '#1f1f1f' }}
+                            actions={[
+                              <Tooltip title="מחק חתיכה זו (לכלוך / טעות חיתוך)">
+                                <DeleteOutlined key="delete" onClick={() => deleteCharacter(char.id)} style={{ color: '#ff4d4f' }} />
+                              </Tooltip>
+                            ]}
+                          >
+                            <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', borderRadius: '4px', marginBottom: '16px', padding: '8px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }}>
+                              <img src={char.image} alt="crop" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'contrast(1.2)' }} />
+                            </div>
+                            <Input
+                              size="large"
+                              placeholder="?"
+                              maxLength={1}
+                              value={char.guess}
+                              onChange={(e) => updateCharacterGuess(char.id, e.target.value)}
+                              style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '20px', background: '#141414' }}
+                            />
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+                  )}
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </main>
-    </div>
+              )}
+
+              {/* Step 2: Download */}
+              {step === 2 && (
+                <Result
+                  status="success"
+                  title="הפונט הדיגיטלי שלך נוצר ומוכן!"
+                  subTitle="כל האותיות שעברו וקטוריזציה נארזו ומוכנות להתקנה במחשב או בטלפון שלך בצורה מקצועית."
+                  extra={[
+                    <Button type="primary" key="download" size="large" icon={<DownloadOutlined />} href={downloadUrl} download="MyHandwriting.otf">
+                      הורדת הפונט (.OTF)
+                    </Button>,
+                    <Button key="restart" size="large" onClick={() => {
+                      setStep(0);
+                      setFile(null);
+                      setCharacters([]);
+                    }}>
+                      צור פונט חדש לחלוטין
+                    </Button>,
+                  ]}
+                />
+              )}
+            </div>
+          </Spin>
+        </Content>
+      </Layout>
+    </ConfigProvider>
   );
 }
