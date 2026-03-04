@@ -38,10 +38,38 @@ def process_image(image_bytes: bytes):
     if not bounding_boxes:
         return []
         
-    (contours, bounding_boxes) = zip(*sorted(zip(contours, bounding_boxes),
-                                             key=lambda b: b[1][0], reverse=True))
+    # Group into lines (Line Segmentation)
+    # First, sort top-to-bottom by Y coordinate
+    boxes_with_contours = list(zip(bounding_boxes, contours))
+    boxes_with_contours.sort(key=lambda b: b[0][1])
+    
+    lines = []
+    current_line = []
+    
+    # We define a new line if the Y difference is greater than half the height of the previous box
+    for i, (box, contour) in enumerate(boxes_with_contours):
+        if not current_line:
+            current_line.append((box, contour))
+        else:
+            prev_box = current_line[-1][0]
+            # If the current box Y is close to the previous box Y, it's the same line
+            if abs(box[1] - prev_box[1]) < prev_box[3] * 0.5:
+                current_line.append((box, contour))
+            else:
+                lines.append(current_line)
+                current_line = [(box, contour)]
+    
+    if current_line:
+        lines.append(current_line)
+        
+    # Sort each line Right-to-Left (for Hebrew)
+    # X coordinate -> 0 is left, so larger X is right
+    sorted_contours = []
+    for line in lines:
+        line.sort(key=lambda b: b[0][0], reverse=True)
+        sorted_contours.extend([item[1] for item in line])
 
-    for contour in contours:
+    for contour in sorted_contours:
         x, y, w, h = cv2.boundingRect(contour)
 
         # Filter out noise (dots, very small smudges)
@@ -62,8 +90,7 @@ def process_image(image_bytes: bytes):
             _, buffer = cv2.imencode('.png', roi_disp)
             base64_img = base64.b64encode(buffer).decode('utf-8')
 
-            # We would integrate Tesseract OCR here. 
-            # For now, we will return empty guesses for the user to map manually.
+            # We will return empty guesses, the frontend will populate them using the transcript
             characters.append({
                 "id": str(uuid.uuid4()),
                 "guess": "", 

@@ -13,6 +13,7 @@ export default function App() {
   const [step, setStep] = useState(0);
   const [characters, setCharacters] = useState([]);
   const [downloadUrl, setDownloadUrl] = useState(null);
+  const [transcript, setTranscript] = useState("אבגדהוזחטיכלמנסעפצקרשתץףןםך"); // Default Hebrew Alphabet
 
   const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
@@ -31,9 +32,20 @@ export default function App() {
 
       const data = await resp.json();
       if (data.characters) {
-        setCharacters(data.characters);
+        // Transcript Alignment: Match detected crops to the characters in the exact order
+        // Ignoring spaces in the transcript 
+        const charsWithoutSpaces = transcript.replace(/\s+/g, '');
+
+        const alignedCharacters = data.characters.map((char, index) => {
+          return {
+            ...char,
+            guess: index < charsWithoutSpaces.length ? charsWithoutSpaces[index] : ""
+          };
+        });
+
+        setCharacters(alignedCharacters);
         setStep(1);
-        message.success(`זוהו ${data.characters.length} אותיות ברורות בתמונה!`);
+        message.success(`זוהו ${data.characters.length} אותיות ברורות והותאמו לטקסט!`);
       } else {
         message.error("לא הצלחנו לחלץ אותיות. אנא נסה תמונה ברורה יותר.");
       }
@@ -145,6 +157,20 @@ export default function App() {
                     icon={<InfoCircleOutlined style={{ fontSize: '24px' }} />}
                     style={{ textAlign: 'right', marginBottom: '32px', borderRadius: '8px', border: '1px solid #434343', background: '#1f1f1f', color: '#fff' }}
                   />
+
+                  <div style={{ textAlign: 'right', marginBottom: '24px' }}>
+                    <Text strong style={{ fontSize: '16px', display: 'block', marginBottom: '8px' }}>מה כתוב בדף שתעלה?</Text>
+                    <Input.TextArea
+                      rows={3}
+                      value={transcript}
+                      onChange={(e) => setTranscript(e.target.value)}
+                      placeholder="הקלד כאן בדיוק את הטקסט שמופיע בדף שלך... (משמאל לימין או מימין לשמאל, המערכת תתאים)"
+                      style={{ fontSize: '18px', background: '#141414', color: '#fff' }}
+                    />
+                    <Text type="secondary" style={{ fontSize: '13px', marginTop: '4px', display: 'inline-block' }}>
+                      המערכת תחתוך את האותיות מהתמונה ותתאים אותן בהתאמה מלאה לאותיות שהקלדת כאן, בלי צורך בניחוש אוטומטי!
+                    </Text>
+                  </div>
 
                   <Dragger
                     accept="image/*"
