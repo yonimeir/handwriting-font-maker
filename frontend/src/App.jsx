@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Upload, Button, Typography, Layout, theme, Card, Col, Row, Input, Spin, message, Result, Steps, Tooltip, ConfigProvider } from 'antd';
-import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined } from '@ant-design/icons';
+import { Upload, Button, Typography, Layout, theme, Card, Col, Row, Input, Spin, message, Result, Steps, Tooltip, ConfigProvider, Alert } from 'antd';
+import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import 'antd/dist/reset.css'; // Helps with base styling
 
 const { Title, Text, Paragraph } = Typography;
@@ -121,11 +121,31 @@ export default function App() {
 
               {/* Step 0: Upload */}
               {step === 0 && (
-                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ textAlign: 'center', padding: '10px 0' }}>
                   <Title level={4}>העלה את דף כתב היד שלך</Title>
-                  <Paragraph type="secondary" style={{ marginBottom: '30px', fontSize: '16px' }}>
-                    צלם תמונה ברורה או העלה סריקה של האותיות שלך על דף חלק (ללא שורות או עכירות).
+                  <Paragraph type="secondary" style={{ marginBottom: '24px', fontSize: '16px' }}>
+                    המערכת שלנו חכמה, אבל היא צריכה את עזרתך כדי לחלץ את האותיות בצורה מושלמת.
                   </Paragraph>
+
+                  <Alert
+                    message="איך לכתוב ולצלם את הדף?"
+                    description={
+                      <div style={{ textAlign: 'right', marginTop: '10px' }}>
+                        <ul style={{ paddingRight: '20px', margin: 0, lineHeight: '1.8' }}>
+                          <li><strong>הדף:</strong> השתמשו אך ורק בדף לבן וחלק (ללא שורות או משבצות).</li>
+                          <li><strong>העט:</strong> כתבו בעט שחור או כהה (עדיפות לטוש או עט פיילוט בעובי בינוני).</li>
+                          <li><strong>הכתיבה:</strong> השאירו רווח ברור ובולט בין אות לאות ובין שורה לשורה.</li>
+                          <li><strong>התוכן:</strong> כתבו את כל האותיות (א-ת), מספרים, וסימני פיסוק שתרצו בפונט.</li>
+                          <li><strong>הצילום:</strong> צלמו באור יום וודאו שאין צל של הטלפון שנופל על הדף. צלמו מלמעלה בצורה ישרה ככל האפשר.</li>
+                        </ul>
+                      </div>
+                    }
+                    type="info"
+                    showIcon
+                    icon={<InfoCircleOutlined style={{ fontSize: '24px' }} />}
+                    style={{ textAlign: 'right', marginBottom: '32px', borderRadius: '8px', border: '1px solid #177ddc', background: '#e6f4ff', color: '#000' }}
+                  />
+
                   <Dragger
                     accept="image/*"
                     showUploadList={false}
@@ -137,7 +157,7 @@ export default function App() {
                     </p>
                     <p className="ant-upload-text" style={{ color: '#fff', fontSize: '18px' }}>לחץ כאן או גרור תמונה לאזור זה</p>
                     <p className="ant-upload-hint" style={{ color: '#8c8c8c' }}>
-                      המערכת תומכת בקבצי JPG, PNG וכו'. התמונה תעבור עיבוד בשרת והאותיות יופרדו אוטומטית.
+                      המערכת תומכת בקבצי JPG, PNG וכו'. התמונה תעבור ניקוי, חיתוך וזיהוי אוטומטי בשרת.
                     </p>
                   </Dragger>
                 </div>
