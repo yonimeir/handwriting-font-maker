@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Button, Typography, Layout, theme, Card, Col, Row, Input, Spin, message, Result, Steps, Tooltip, ConfigProvider, Alert, Modal, Space } from 'antd';
-import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined, InfoCircleOutlined, MergeCellsOutlined, BgColorsOutlined, ScissorOutlined } from '@ant-design/icons';
+import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined, InfoCircleOutlined, MergeCellsOutlined, BgColorsOutlined, ScissorOutlined, ExpandAltOutlined } from '@ant-design/icons';
 import 'antd/dist/reset.css'; // Helps with base styling
 
 const { Title, Text, Paragraph } = Typography;
@@ -139,6 +139,46 @@ export default function App() {
     } catch (err) {
       console.error(err);
       message.error("תקלה במיזוג התמונות.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const expandCharacter = async (currentIndex) => {
+    const char = characters[currentIndex];
+    if (!char.rect) {
+      message.warning('מידע המיקום חסר לאות זו. ייתכן שנוצרה ממיזוג או חיתוך ואי אפשר להרחיבה.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const resp = await fetch(`${API_BASE}/expand`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(char.rect),
+      });
+
+      const data = await resp.json();
+      if (data.image) {
+        setCharacters(prev => {
+          const newChars = [...prev];
+          newChars[currentIndex] = {
+            ...char,
+            image: data.image,
+            rect: data.rect // Update to the new expanded rect
+          };
+          return newChars;
+        });
+        message.success("גבולות האות הורחבו בהצלחה!");
+      } else if (data.error) {
+        message.error(data.error);
+      }
+    } catch (err) {
+      console.error(err);
+      message.error("שגיאה בהרחבת התמונה מול השרת.");
     } finally {
       setLoading(false);
     }
@@ -559,6 +599,9 @@ export default function App() {
                               </Tooltip>,
                               <Tooltip title="פצל אותיות שנדבקו בטעות (יחתוך אותן לחצי בחירתך)">
                                 <ScissorOutlined key="split" onClick={() => openSplitter(char, characters.indexOf(char))} style={{ color: '#faad14' }} />
+                              </Tooltip>,
+                              <Tooltip title="הרחב גבולות (אם הקצה של האות נחתך בטעות)">
+                                <ExpandAltOutlined key="expand" onClick={() => expandCharacter(characters.indexOf(char))} style={{ color: '#eb2f96' }} />
                               </Tooltip>,
                               characters.indexOf(char) < characters.length - 1 ? (
                                 <Tooltip title="מזג עם האות הבאה (טוב לאותיות כמו ה', ק')">

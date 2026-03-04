@@ -139,7 +139,8 @@ def process_image(image_bytes: bytes):
         characters.append({
             "id": str(uuid.uuid4()),
             "guess": "", 
-            "image": f"data:image/png;base64,{base64_img}"
+            "image": f"data:image/png;base64,{base64_img}",
+            "rect": {"x": x, "y": y, "w": w, "h": h}
         })
 
     return characters
