@@ -19,6 +19,13 @@ def process_image(image_bytes: bytes):
     if img is None:
         raise ValueError("Invalid image file")
 
+    # Resize if too large to save memory and processing time (avoiding OOM on Render Free Tier)
+    max_dim = 1600
+    h, w = img.shape[:2]
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
     # Convert to Grayscale and blur
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
