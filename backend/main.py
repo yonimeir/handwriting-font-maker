@@ -45,8 +45,8 @@ async def upload_image(file: UploadFile = File(...)):
         
         # Convert to Grayscale & Adaptive Threshold to match exactly what the user sees
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 51, 20)
+        blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+        thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 61, 25)
         kernel = np.ones((5, 5), np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
         cv2.rectangle(thresh, (0, 0), (thresh.shape[1]-1, thresh.shape[0]-1), 0, 10)

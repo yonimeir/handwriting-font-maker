@@ -30,7 +30,7 @@ def process_image(image_bytes: bytes):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
     # Apply a slight blur to remove tiny paper texture noise
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    blurred = cv2.GaussianBlur(gray, (7, 7), 0)
 
     # Use Adaptive Thresholding to handle uneven lighting and shadows perfectly (White text on Black background)
     thresh = cv2.adaptiveThreshold(
@@ -38,8 +38,8 @@ def process_image(image_bytes: bytes):
         255, 
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY_INV, 
-        51, # Block size (larger = better for handling gradients across the page)
-        20  # Constant subtracted from mean (higher = completely removes background noise and texture)
+        61, # Block size (larger = better for handling gradients across the page)
+        25  # Constant subtracted from mean (higher = completely removes background noise and texture)
     )
 
     # Apply morphological closing slightly to connect very close components of the same letter
@@ -59,9 +59,9 @@ def process_image(image_bytes: bytes):
         # Filter out extremely small noise and extremely large page borders/shadows
     for box, contour in zip(bounding_boxes, contours):
         x, y, w, h = box
-        # Max limits updated to prevent long shadow lines from the page edge (w < 400, h < 400)
-        # Min limits updated to catch dots ('י', commas)
-        if w > 5 and h > 5 and (w * h) > 40 and w < 400 and h < 400:
+        # Max limits updated to prevent long shadow lines from the page edge (w < 800, h < 800)
+        # Min limits updated to catch dots ('י', commas) but ignore dust/noise (10x10 min bounding)
+        if w > 10 and h > 10 and (w * h) > 150 and w < 800 and h < 800:
             valid_boxes_contours.append((box, contour))
             
     if not valid_boxes_contours:
