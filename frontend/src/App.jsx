@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Button, Typography, Layout, theme, Card, Col, Row, Input, Spin, message, Result, Steps, Tooltip, ConfigProvider, Alert, Modal, Space } from 'antd';
-import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined, InfoCircleOutlined, MergeCellsOutlined, BgColorsOutlined } from '@ant-design/icons';
+import { InboxOutlined, CheckCircleOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, PictureOutlined, InfoCircleOutlined, MergeCellsOutlined, BgColorsOutlined, ScissorOutlined } from '@ant-design/icons';
 import 'antd/dist/reset.css'; // Helps with base styling
 
 const { Title, Text, Paragraph } = Typography;
@@ -134,6 +134,66 @@ export default function App() {
     } catch (err) {
       console.error(err);
       message.error("תקלה במיזוג התמונות.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const splitCharacter = async (currentIndex) => {
+    setLoading(true);
+    try {
+      const char = characters[currentIndex];
+      const img = new Image();
+      img.src = char.image;
+
+      await new Promise(resolve => img.onload = resolve);
+
+      const width = img.width;
+      const height = img.height;
+      const mid = Math.floor(width / 2);
+
+      // Create two canvases
+      // Right half (First letter in Hebrew RTL)
+      const canvasRight = document.createElement('canvas');
+      canvasRight.width = width - mid;
+      canvasRight.height = height;
+      const ctxRight = canvasRight.getContext('2d');
+      ctxRight.fillStyle = '#ffffff';
+      ctxRight.fillRect(0, 0, canvasRight.width, canvasRight.height);
+      ctxRight.drawImage(img, mid, 0, width - mid, height, 0, 0, width - mid, height);
+      const rightSrc = canvasRight.toDataURL('image/png');
+
+      // Left half (Second letter)
+      const canvasLeft = document.createElement('canvas');
+      canvasLeft.width = mid;
+      canvasLeft.height = height;
+      const ctxLeft = canvasLeft.getContext('2d');
+      ctxLeft.fillStyle = '#ffffff';
+      ctxLeft.fillRect(0, 0, canvasLeft.width, canvasLeft.height);
+      ctxLeft.drawImage(img, 0, 0, mid, height, 0, 0, mid, height);
+      const leftSrc = canvasLeft.toDataURL('image/png');
+
+      setCharacters(prev => {
+        const newChars = [...prev];
+        // Replace current with Right Half
+        newChars[currentIndex] = { ...char, image: rightSrc };
+        // Insert Left Half at next index
+        newChars.splice(currentIndex + 1, 0, {
+          id: char.id + '_split_' + Date.now(),
+          image: leftSrc,
+          guess: ''
+        });
+
+        const charsWithoutSpaces = transcript.replace(/\s+/g, '');
+        return newChars.map((c, index) => ({
+          ...c,
+          guess: index < charsWithoutSpaces.length ? charsWithoutSpaces[index] : ""
+        }));
+      });
+      message.success("האות פוצלה בהצלחה לשתיים!");
+    } catch (err) {
+      console.error(err);
+      message.error("תקלה בפיצול התמונה.");
     } finally {
       setLoading(false);
     }
@@ -354,6 +414,9 @@ export default function App() {
                             actions={[
                               <Tooltip title="ערוך ומחק לכלוך">
                                 <EditOutlined key="edit" onClick={() => openEraser(char)} style={{ color: '#1890ff' }} />
+                              </Tooltip>,
+                              <Tooltip title="פצל אותיות שנדבקו בטעות (יחתוך אותן לחצי)">
+                                <ScissorOutlined key="split" onClick={() => splitCharacter(characters.indexOf(char))} style={{ color: '#faad14' }} />
                               </Tooltip>,
                               characters.indexOf(char) < characters.length - 1 ? (
                                 <Tooltip title="מזג עם האות הבאה (טוב לאותיות כמו ה', ק')">
