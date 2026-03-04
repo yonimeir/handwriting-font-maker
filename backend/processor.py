@@ -28,33 +28,40 @@ def process_image(image_bytes: bytes):
 
     # Convert to Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Apply a slight blur to remove tiny paper texture noise
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
     # Use Adaptive Thresholding to handle uneven lighting and shadows perfectly (White text on Black background)
     thresh = cv2.adaptiveThreshold(
-        gray, 
+        blurred, 
         255, 
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY_INV, 
-        31, # Block size (must be odd, 31 is good for large images)
-        15   # Constant subtracted from mean (higher = less noise, but might cut thin lines)
+        51, # Block size (larger = better for handling gradients across the page)
+        20  # Constant subtracted from mean (higher = completely removes background noise and texture)
     )
 
     # Apply morphological closing slightly to connect very close components of the same letter
     # This helps with letters written with slight disconnects in the stroke
-    kernel = np.ones((3, 3), np.uint8)
+    kernel = np.ones((5, 5), np.uint8)
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
 
-    # Find ALL contours (RETR_LIST) so we don't get blocked by a dark border around the page
-    contours, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    # Break any potential border "halos" that might wrap the whole page
+    cv2.rectangle(thresh, (0, 0), (thresh.shape[1]-1, thresh.shape[0]-1), 0, 10)
+
+    # Find EXTERNAL contours only, to avoid double-counting holes (like inside 'ס', 'ם')
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     bounding_boxes = [cv2.boundingRect(c) for c in contours]
     
     valid_boxes_contours = []
-        # Filter out extremely small noise and extremely large page borders
+        # Filter out extremely small noise and extremely large page borders/shadows
     for box, contour in zip(bounding_boxes, contours):
         x, y, w, h = box
-        # Max width/height 90% of image, min width/height small enough to catch dots and 'י'
-        if w > 3 and h > 3 and (w * h) > 15 and w < img.shape[1] * 0.9 and h < img.shape[0] * 0.9:
+        # Max limits updated to prevent long shadow lines from the page edge (w < 400, h < 400)
+        # Min limits updated to catch dots ('י', commas)
+        if w > 5 and h > 5 and (w * h) > 40 and w < 400 and h < 400:
             valid_boxes_contours.append((box, contour))
             
     if not valid_boxes_contours:
