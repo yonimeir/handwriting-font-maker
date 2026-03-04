@@ -146,13 +146,16 @@ export default function App() {
 
   const openSplitter = (char, index) => {
     setSplittingChar({ ...char, index });
-    setSplitX(null);
+    setSplitPath([]); // Array of {x, y} coordinates for the cut line
   };
 
   const closeSplitter = () => {
     setSplittingChar(null);
-    setSplitX(null);
+    setSplitPath([]);
   };
+
+  const [splitPath, setSplitPath] = useState([]);
+  const [isSplittingDraw, setIsSplittingDraw] = useState(false);
 
   useEffect(() => {
     if (splittingChar && canvasSplitRef.current) {
@@ -164,29 +167,46 @@ export default function App() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        if (splitX !== null) {
+        // Draw the user's freehand cut line
+        if (splitPath.length > 0) {
           ctx.beginPath();
           ctx.strokeStyle = '#ff4d4f'; // Red cut line
           ctx.setLineDash([5, 5]);
           ctx.lineWidth = 2;
-          ctx.moveTo(splitX, 0);
-          ctx.lineTo(splitX, canvas.height);
+          ctx.moveTo(splitPath[0].x, splitPath[0].y);
+          for (let i = 1; i < splitPath.length; i++) {
+            ctx.lineTo(splitPath[i].x, splitPath[i].y);
+          }
           ctx.stroke();
           ctx.setLineDash([]);
         }
       };
     }
-  }, [splittingChar, splitX]);
+  }, [splittingChar, splitPath]);
 
-  const handleSplitCanvasClick = (e) => {
+  const startSplitDraw = (e) => {
     const rect = canvasSplitRef.current.getBoundingClientRect();
-    const x = e.clientX || (e.touches && e.touches[0].clientX);
-    if (x) setSplitX(x - rect.left);
+    const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+    const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+    setIsSplittingDraw(true);
+    setSplitPath([{ x, y }]); // Start a new path
+  };
+
+  const drawSplitLine = (e) => {
+    if (!isSplittingDraw) return;
+    const rect = canvasSplitRef.current.getBoundingClientRect();
+    const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+    const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+    setSplitPath(prev => [...prev, { x, y }]);
+  };
+
+  const stopSplitDraw = () => {
+    setIsSplittingDraw(false);
   };
 
   const saveSplitEvent = async () => {
-    if (!splittingChar || splitX === null) {
-      message.warning('אנא לחץ על התמונה כדי לסמן את קו הגזירה האדום ולאחר מכן שמור.');
+    if (!splittingChar || splitPath.length < 2) {
+      message.warning('אנא צייר קו חיתוך אדום על התמונה בעזרת העכבר לפני שאתה סוגר.');
       return;
     }
     setLoading(true);
@@ -199,35 +219,106 @@ export default function App() {
       await new Promise(resolve => img.onload = resolve);
 
       const canvasW = canvasSplitRef.current.width;
-      // Calculate actual pixel cut point
-      const actualSplitX = Math.floor((splitX / canvasW) * img.width);
+      const canvasH = canvasSplitRef.current.height;
+      const scaleX = img.width / canvasW;
+      const scaleY = img.height / canvasH;
 
-      // Create two canvases
-      // Right half (First letter in Hebrew RTL, meaning the right side of the image)
+      // Create an offscreen canvas to perform pixel-perfect splitting
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = img.width;
+      offCanvas.height = img.height;
+      const offCtx = offCanvas.getContext('2d');
+      offCtx.drawImage(img, 0, 0);
+      const imgData = offCtx.getImageData(0, 0, img.width, img.height);
+      const data = imgData.data;
+
+      // Determine 'cut boundary' for each row based on the drawn path
+      // map from y -> x coordinate of the cut
+      const cutMap = new Map();
+
+      // Interpolate the points so we have a cut X for every Y
+      for (let i = 0; i < splitPath.length - 1; i++) {
+        const p1 = splitPath[i];
+        const p2 = splitPath[i + 1];
+
+        let yStart = Math.min(p1.y, p2.y);
+        let yEnd = Math.max(p1.y, p2.y);
+
+        for (let y = Math.round(yStart); y <= Math.round(yEnd); y++) {
+          // Linear interpolation for X based on Y
+          let t = (y - p1.y) / (p2.y - p1.y || 1);
+          let x = p1.x + t * (p2.x - p1.x);
+          // Only keep the rightmost cut (or leftmost, just need a boundary)
+          cutMap.set(y, x);
+        }
+      }
+
+      // If cut doesn't reach top/bottom, extend the first/last known X
+      let firstY = Math.min(...Array.from(cutMap.keys()));
+      let lastY = Math.max(...Array.from(cutMap.keys()));
+      let firstX = cutMap.get(firstY);
+      let lastX = cutMap.get(lastY);
+
+      for (let y = 0; y < firstY; y++) cutMap.set(y, firstX);
+      for (let y = lastY + 1; y < canvasH; y++) cutMap.set(y, lastX);
+
+
+      // Create Data arrays for Left side (Left of cut) and Right side (Right of cut)
+      const leftData = new Uint8ClampedArray(data.length);
+      const rightData = new Uint8ClampedArray(data.length);
+
+      // Fill with purely white background (255, 255, 255, 255)
+      for (let i = 0; i < data.length; i += 4) {
+        leftData[i] = 255; leftData[i + 1] = 255; leftData[i + 2] = 255; leftData[i + 3] = 255;
+        rightData[i] = 255; rightData[i + 1] = 255; rightData[i + 2] = 255; rightData[i + 3] = 255;
+      }
+
+      // Split pixels based on the geometric cut line
+      for (let y = 0; y < img.height; y++) {
+        // Map real Y back to canvas Y to find the cut boundary
+        let canvasY = Math.round(y / scaleY);
+        let cutBoundaryX = cutMap.get(canvasY) * scaleX;
+
+        for (let x = 0; x < img.width; x++) {
+          const idx = (y * img.width + x) * 4;
+
+          if (x < cutBoundaryX) {
+            // Pixel goes to LEFT canvas
+            leftData[idx] = data[idx];
+            leftData[idx + 1] = data[idx + 1];
+            leftData[idx + 2] = data[idx + 2];
+            leftData[idx + 3] = data[idx + 3];
+          } else {
+            // Pixel goes to RIGHT canvas
+            rightData[idx] = data[idx];
+            rightData[idx + 1] = data[idx + 1];
+            rightData[idx + 2] = data[idx + 2];
+            rightData[idx + 3] = data[idx + 3];
+          }
+        }
+      }
+
+      // Right half (First letter in Hebrew RTL) -> the right side of the image
       const canvasRight = document.createElement('canvas');
-      canvasRight.width = img.width - actualSplitX;
+      canvasRight.width = img.width;
       canvasRight.height = img.height;
       const ctxRight = canvasRight.getContext('2d');
-      ctxRight.fillStyle = '#ffffff';
-      ctxRight.fillRect(0, 0, canvasRight.width, canvasRight.height);
-      ctxRight.drawImage(img, actualSplitX, 0, img.width - actualSplitX, img.height, 0, 0, img.width - actualSplitX, img.height);
+      ctxRight.putImageData(new ImageData(rightData, img.width, img.height), 0, 0);
       const rightSrc = canvasRight.toDataURL('image/png');
 
-      // Left half (Second letter in Hebrew RTL, meaning the left side of the image)
+      // Left half (Second letter in Hebrew RTL, left side of the image)
       const canvasLeft = document.createElement('canvas');
-      canvasLeft.width = actualSplitX;
+      canvasLeft.width = img.width;
       canvasLeft.height = img.height;
       const ctxLeft = canvasLeft.getContext('2d');
-      ctxLeft.fillStyle = '#ffffff';
-      ctxLeft.fillRect(0, 0, canvasLeft.width, canvasLeft.height);
-      ctxLeft.drawImage(img, 0, 0, actualSplitX, img.height, 0, 0, actualSplitX, img.height);
+      ctxLeft.putImageData(new ImageData(leftData, img.width, img.height), 0, 0);
       const leftSrc = canvasLeft.toDataURL('image/png');
 
       setCharacters(prev => {
         const newChars = [...prev];
-        // Replace current with Right Half
+        // Replace current with Right branch (First Hebrew char)
         newChars[currentIndex] = { ...char, image: rightSrc };
-        // Insert Left Half at next index
+        // Insert Left branch (Second Hebrew char)
         newChars.splice(currentIndex + 1, 0, {
           id: char.id + '_split_' + Date.now(),
           image: leftSrc,
@@ -240,7 +331,7 @@ export default function App() {
           guess: index < charsWithoutSpaces.length ? charsWithoutSpaces[index] : ""
         }));
       });
-      message.success("האות פוצלה בהצלחה במיקום הנבחר!");
+      message.success("האותיות פוצלו בהצלחה לפי קו החיתוך שלך!");
       closeSplitter();
     } catch (err) {
       console.error(err);
@@ -574,7 +665,13 @@ export default function App() {
               ref={canvasSplitRef}
               width={300}
               height={150}
-              onClick={handleSplitCanvasClick}
+              onMouseDown={startSplitDraw}
+              onMouseMove={drawSplitLine}
+              onMouseUp={stopSplitDraw}
+              onMouseLeave={stopSplitDraw}
+              onTouchStart={(e) => { e.preventDefault(); startSplitDraw(e.touches[0] ? { nativeEvent: { offsetX: e.touches[0].clientX - e.target.getBoundingClientRect().left, offsetY: e.touches[0].clientY - e.target.getBoundingClientRect().top }, clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } : e); }}
+              onTouchMove={(e) => { e.preventDefault(); drawSplitLine(e.touches[0] ? { nativeEvent: { offsetX: e.touches[0].clientX - e.target.getBoundingClientRect().left, offsetY: e.touches[0].clientY - e.target.getBoundingClientRect().top }, clientX: e.touches[0].clientX, clientY: e.touches[0].clientY } : e); }}
+              onTouchEnd={stopSplitDraw}
               style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
             />
           </div>
