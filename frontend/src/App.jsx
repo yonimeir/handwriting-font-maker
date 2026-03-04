@@ -128,7 +128,7 @@ export default function App() {
                   </Paragraph>
 
                   <Alert
-                    message="איך לכתוב ולצלם את הדף?"
+                    message={<strong>איך לכתוב ולצלם את הדף?</strong>}
                     description={
                       <div style={{ textAlign: 'right', marginTop: '10px' }}>
                         <ul style={{ paddingRight: '20px', margin: 0, lineHeight: '1.8' }}>
@@ -143,7 +143,7 @@ export default function App() {
                     type="info"
                     showIcon
                     icon={<InfoCircleOutlined style={{ fontSize: '24px' }} />}
-                    style={{ textAlign: 'right', marginBottom: '32px', borderRadius: '8px', border: '1px solid #177ddc', background: '#e6f4ff', color: '#000' }}
+                    style={{ textAlign: 'right', marginBottom: '32px', borderRadius: '8px', border: '1px solid #434343', background: '#1f1f1f', color: '#fff' }}
                   />
 
                   <Dragger
