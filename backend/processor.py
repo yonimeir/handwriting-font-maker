@@ -35,9 +35,11 @@ def process_image(image_bytes: bytes):
         thresh[-10:, -10:].flatten()
     ])
     
-    # If the majority of corner pixels are 255 (white), it means the page background became white
-    # We must invert it so the background is 0 (black) and characters are 255 (white).
-    if np.median(corner_pixels) == 255:
+    # Check the most frequent value (median or mean)
+    # If it's mostly 0 (which was white in original image and inverted by THRESH_BINARY_INV), 
+    # then our font background is Black, and Text is White - which is correct for contours!
+    # If the background is 255 (White), it means the text is Black. We must invert it.
+    if np.median(corner_pixels) > 127:
         thresh = cv2.bitwise_not(thresh)
 
     # Find ALL contours (RETR_LIST) so we don't get blocked by a dark border around the page
