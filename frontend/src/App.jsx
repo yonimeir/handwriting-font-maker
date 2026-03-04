@@ -164,11 +164,11 @@ export default function App() {
                       rows={3}
                       value={transcript}
                       onChange={(e) => setTranscript(e.target.value)}
-                      placeholder="הקלד כאן בדיוק את הטקסט שמופיע בדף שלך... (משמאל לימין או מימין לשמאל, המערכת תתאים)"
+                      placeholder="הקלד כאן עם רווחים רגילים: למשל 'שלום עולם'"
                       style={{ fontSize: '18px', background: '#141414', color: '#fff' }}
                     />
                     <Text type="secondary" style={{ fontSize: '13px', marginTop: '4px', display: 'inline-block' }}>
-                      המערכת תחתוך את האותיות מהתמונה ותתאים אותן בהתאמה מלאה לאותיות שהקלדת כאן, בלי צורך בניחוש אוטומטי!
+                      אתה יכול וצריך להקליד עם חללים (רווחים / שורות חדשות). המערכת תתעלם מהם ותתאים רק את האותיות לחיתוכים שבתמונה!
                     </Text>
                   </div>
 
